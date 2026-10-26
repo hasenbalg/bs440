@@ -111,3 +111,13 @@ async def test_max_time_caps_a_stuck_session():
     t0 = asyncio.get_running_loop().time()
     await scale.collect(idle_timeout=5, max_time=0.2)
     assert asyncio.get_running_loop().time() - t0 < 1.0
+
+
+async def test_sync_clock_subtracts_2010_offset_for_2010_firmware():
+    import time
+    fake = FakeClient([])
+    scale = Scale("x", epoch="2010")
+    scale._client = fake
+    await scale.sync_clock()
+    sent = int.from_bytes(fake.written[0][1:], "little")
+    assert abs((time.time() - 1_262_304_000) - sent) < 60

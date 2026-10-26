@@ -61,7 +61,7 @@ async def test_find_scales_filters_client_side(monkeypatch):
         "c": (OTHER, FakeAdv("unpaired", -51,
                              ["00001800-0000-1000-8000-00805f9b34fb"])),
         "d": (OTHER, FakeAdv("mystery", -60,
-                             ["00008080-0000-1000-8000-00805f9b34fb"])),
+                             ["000078b2-0000-1000-8000-00805f9b34fb"])),
     }
 
     class FakeScanner:

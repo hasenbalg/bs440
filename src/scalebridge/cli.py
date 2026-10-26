@@ -7,10 +7,12 @@ import csv
 import json
 import logging
 import sys
+import time
 
+from bleak import BleakClient
 from bleak.exc import BleakError
 
-from .client import Scale, _short_uuids, find_scales, match_reason, watch_scales
+from .client import Scale, _scan_line, find_scales, match_reason, watch_scales
 from .decode import EPOCH_MODES
 from .models import Reading
 
@@ -33,18 +35,102 @@ def _emit(readings: list[Reading], args) -> None:
 
 
 async def cmd_scan(args):
+    if getattr(args, "follow", False):
+        return await cmd_scan_follow(args)
     devices = await find_scales(timeout=args.timeout, all_devices=args.all)
     for dev, adv in devices:
-        name = dev.name or getattr(adv, "local_name", None) or "(unnamed)"
         via = match_reason(dev, adv) if adv else "-"
         if args.all and not via:
             via = "-"
-        svcs = _short_uuids(adv) if adv else ""
-        print(f"{dev.address}  {name:<20} rssi={getattr(adv, 'rssi', None)}"
-              f"  via={via}  svcs=[{svcs}]")
+        print(_scan_line(dev, adv, via))
     if not devices:
         print("no scales found (step on the scale so it wakes up; "
               "try --all to see every advertisement)")
+
+
+async def cmd_scan_follow(args):
+    """Live watch: print advertisements as they first appear.  Step on
+    the scale while this runs: the newly appearing line is your scale."""
+    def when():
+        return time.strftime("%H:%M:%S")
+
+    known: set[str] = set()
+    print(f"{when()}  watching ... step on the scale now")
+    while True:
+        devices = await find_scales(timeout=4.0, all_devices=True)
+        for dev, adv in devices:
+            if dev.address not in known:
+                known.add(dev.address)
+                print(f"{when()}  + " + _scan_line(
+                    dev, adv, match_reason(dev, adv) or "-"), flush=True)
+
+
+# -- hunt: identify the scale by its GATT signature ----------------------
+
+# Names that are obviously not bathroom scales (speakers, TVs, wearables).
+SKIP_NAME_HINTS = ("yamaha", "samsung", "tv", "galaxy", "watch", "buds",
+                   "ear", "headphone", "speaker", "band", "pico", "pixel")
+
+SCALE_MARKERS = {"8a21", "8a22", "8a81", "8a82"}  # the BS440 char set
+
+
+def _char_shorts(uuids) -> set:
+    return {u[4:8] for u in uuids}
+
+
+async def probe_device(address: str, timeout: float = 10.0):
+    """Connect and collect the 16-bit characteristic UUIDs. Returns
+    (uuid_shorts, error): exactly one of the two is None-ish."""
+    try:
+        async with BleakClient(address, timeout=timeout) as client:
+            return _char_shorts(
+                ch.uuid.lower()
+                for service in client.services
+                for ch in service.characteristics), None
+    except Exception as e:                      # any peer is unwelcoming
+        return None, f"{type(e).__name__}: {e}"
+
+
+async def cmd_hunt(args):
+    """Connect to every unexplained nearby device and GATT-map it.
+
+    Advertisements don't identify the BS440 reliably (units advertise
+    without a usable name), but its four private characteristics do.
+    """
+    devices = await find_scales(timeout=args.timeout, all_devices=True)
+    skip = {s.strip().upper() for s in (args.skip or "").split(",")
+            if s.strip()}
+    found = []
+    for dev, adv in devices:
+        name = dev.name or getattr(adv, "local_name", None) or "(unnamed)"
+        if dev.address.upper() in skip:
+            print(f"  skip  {dev.address}  {name} (--skip)")
+            continue
+        if any(h in name.lower() for h in SKIP_NAME_HINTS):
+            print(f"  skip  {dev.address}  {name}")
+            continue
+        print(f"probe {dev.address}  {name} ...", flush=True)
+        chars, err = await probe_device(dev.address,
+                                        timeout=args.probe_timeout)
+        if err or chars is None:
+            print(f"  ----  {dev.address}  {name:<20} "
+                  f"({(err or 'no characteristics')[:60]})")
+            continue
+        markers = SCALE_MARKERS & chars
+        flag = f"   <<< BS440 SCALE ({len(markers)}/4 markers)" \
+            if len(markers) >= 2 else ""
+        print(f"  gatt  {dev.address}  {name:<20} "
+              f"chars={','.join(sorted(chars))}{flag}")
+        if flag:
+            found.append(dev.address)
+    if found:
+        addr = found[0]
+        print(f"\nfound it:  scalebridge info {addr}  &&  "
+              f"scalebridge dump {addr}")
+    else:
+        print("\nno scale found: is it awake (step on it) and unpaired "
+              "from the phone app?  Add --skip <MAC,...> once you know "
+              "the regulars.")
 
 
 async def cmd_dump(args):
@@ -110,7 +196,21 @@ def main() -> None:
     p.add_argument("--timeout", type=float, default=10.0)
     p.add_argument("--all", action="store_true",
                    help="show every advertisement, not just scale matches")
+    p.add_argument("--follow", action="store_true",
+                   help="watch live; print advertisements as they appear")
     p.set_defaults(func=cmd_scan)
+
+    p = sub.add_parser(
+        "hunt",
+        help="connect to nearby devices and find the one that IS a scale "
+             "(advertising names are unreliable on this family)")
+    p.add_argument("--timeout", type=float, default=15.0,
+                   help="scan time before probing")
+    p.add_argument("--probe-timeout", type=float, default=10.0,
+                   help="connect/GATT timeout per device")
+    p.add_argument("--skip", metavar="MAC,MAC,...",
+                   help="addresses to ignore (known non-scales)")
+    p.set_defaults(func=cmd_hunt)
 
     p = sub.add_parser("dump", help="pull the scale's stored history")
     p.add_argument("address")

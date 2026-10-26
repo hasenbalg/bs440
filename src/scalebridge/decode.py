@@ -11,13 +11,15 @@ protocol section in README.md for the full table and credits.
 from __future__ import annotations
 
 import struct
+import time
 
 PERSON_MAGIC = 0x84
 WEIGHT_MAGIC = 0x1D
 BODY_MAGIC = 0x6F
 
-# On some models (BS410, BS444) the scale's clock starts at 2010-01-01,
-# so timestamps are 1262304000 seconds behind real Unix time.
+# On some models (BS410, BS444, and BS440 units advertising 0202B6*/
+# 013197*/013198* names) the scale's clock starts at 2010-01-01, so
+# timestamps are 1262304000 seconds behind real Unix time.
 EPOCH_2010_OFFSET = 1_262_304_000
 
 _GENDER = {1: "male", 2: "female"}
@@ -26,18 +28,29 @@ _ACTIVITY = {0: "normal", 3: "high"}
 EPOCH_MODES = ("auto", "unix", "2010")
 
 
-def sanitize_timestamp(ts: int, epoch: str = "auto") -> int:
+def sanitize_timestamp(ts: int, epoch: str = "auto",
+                       now: float | None = None) -> int:
     """Map a scale timestamp onto real Unix time.
 
-    auto: treat timestamps below 2010-01-01 as 2010-based clock ticks
-    (a genuine Unix timestamp from a scale sold after 2015 cannot be
-    that small, and a clock that was never set reads as a tiny value).
+    auto: pick whichever candidate (raw, or shifted by the 2010 epoch
+    offset) lands within +-90 days of now -- the same heuristic openScale
+    uses, robust even when the scale's RTC was never set.  Neither near
+    now: tiny values are treated as a 2010-based never-set clock, larger
+    ones are trusted as raw Unix (don't flip).
     """
     if epoch not in EPOCH_MODES:
         raise ValueError(f"epoch must be one of {EPOCH_MODES}, got {epoch!r}")
-    if epoch == "2010" or (epoch == "auto" and ts < EPOCH_2010_OFFSET):
-        ts += EPOCH_2010_OFFSET
-    return ts
+    if epoch == "unix":
+        return ts
+    if epoch == "2010":
+        return ts + EPOCH_2010_OFFSET
+    now = time.time() if now is None else now
+    near = 90 * 24 * 3600
+    if abs(ts - now) <= near:
+        return ts
+    if abs(ts + EPOCH_2010_OFFSET - now) <= near:
+        return ts + EPOCH_2010_OFFSET
+    return ts + EPOCH_2010_OFFSET if ts < EPOCH_2010_OFFSET else ts
 
 
 def decode_person(data: bytes | bytearray) -> dict:

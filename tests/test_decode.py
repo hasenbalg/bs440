@@ -88,6 +88,13 @@ class TestEpoch:
         # a real Unix timestamp is untouched
         assert sanitize_timestamp(0x56A00A6E, "auto") == 0x56A00A6E
 
+    def test_auto_uses_now_proximity(self):
+        # openScale heuristic: pick the candidate within +-90 days of now
+        now = 1_764_100_000                 # late 2025
+        as_2010_clock = now - 1_262_304_000  # what 2010-firmware reports
+        assert sanitize_timestamp(as_2010_clock, "auto", now=now) == now
+        assert sanitize_timestamp(now, "auto", now=now) == now
+
     def test_explicit_modes(self):
         assert sanitize_timestamp(100, "2010") == 1_262_304_100
         assert sanitize_timestamp(100, "unix") == 100

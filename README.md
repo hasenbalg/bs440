@@ -29,14 +29,14 @@ scales it serves one central at a time.
 
 ## How the protocol works
 
-The scale exposes a private GATT service with four characteristics
-(16-bit UUIDs in the Bluetooth base form):
+The scale's private GATT service advertises as **`0x78B2`** and carries
+four characteristics (16-bit UUIDs in the Bluetooth base form):
 
 | UUID `0000xxxx-…` | dir | content |
 |---|---|---|
-| `8A81` | write | command register: `0x02 + unix_time` (u32 LE) → RTC sync **and** history dump |
+| `8A81` | write | command register: `0x02 + scale_time` (u32 LE) → RTC sync **and** history dump |
 | `8A82` | indicate | person profile: `0x84`, person 1–8, gender, age, height, activity |
-| `8A21` | indicate | weight: `0x1d`, kg×100 (u16 LE), unix timestamp, person |
+| `8A21` | indicate | weight: `0x1d`, kg×100 (u16 LE), timestamp, person |
 | `8A22` | indicate | body comp: `0x6f`, timestamp, person, kcal, fat/water/muscle/bone % (×10, high nibble `0xF`) |
 
 Records are little-endian; the fixed first byte is the validity check.
@@ -47,9 +47,18 @@ timestamp command, so **the history dump always includes the weigh-in
 that just happened** — which is what makes `watch` a simple
 dump-and-dedupe loop.
 
-Timestamps: most firmware uses real Unix time; BS410/BS444 firmware
-counts from 2010-01-01. `--epoch auto` (default) detects this, or force
-`--epoch 2010`.
+Identifying a BS440: most units advertise a **hex token, not a model
+name** (e.g. Frank's BS440 advertises `0203B6ABC8A438C1A4`). Reliable
+signals are the advertised `78B2` service or the name prefixes
+`013197`/`013198`/`0202B6`/`0203B`; if in doubt, `scalebridge hunt`
+connects to nearby devices and finds the one exposing the four
+characteristics above.
+
+Timestamps: some firmware counts from 2010-01-01 instead of Unix epoch.
+`--epoch auto` (default) picks whichever interpretation lands within
+±90 days of now, or force `--epoch 2010` / `unix`. Name prefixes
+`013197`/`013198`/`0202B6` indicate 2010-based firmware; `0203B` is
+plain Unix.
 
 Byte layout as reverse-engineered by **keptenkurk** (see credits); the
 unit tests pin the decoders to real captured packets from that writeup
@@ -58,7 +67,7 @@ unit tests pin the decoders to real captured packets from that writeup
 ## Testing on your own scale
 
 ```bash
-.venv/bin/scalebridge scan -v        # find it; note MAC + name
+.venv/bin/scalebridge hunt           # find + identify the scale by GATT
 .venv/bin/scalebridge info <MAC>     # GATT map + what the dump looks like
 .venv/bin/scalebridge dump <MAC>     # should print stored history
 python3 tools/raw_capture.py <MAC>   # raw hex of every PDU, for debugging
@@ -84,8 +93,11 @@ was reverse-engineered by others**, with credit where it's due:
 * Home Assistant community threads on integrating the BS440
   ([example](https://community.home-assistant.io/t/integrating-the-medisana-bs440-bluetooth-enabled-bathroom-scale/24652)).
 * [oliexdev/openScale](https://github.com/oliexdev/openScale) — Android
-  app covering many BLE scales, incl. its wiki on reverse-engineering
-  BLE body scales; BS440-family support discussions live in its issues.
+  app with a production BS44x driver (`MedisanaBs44xHandler`); source of
+  the `78B2` service UUID, the hex-token advertisement-name mapping, and
+  the ±90-days timestamp-epoch heuristic used here. Frank has used it
+  with this exact scale for years — it's also what finally identified
+  his unit in a noisy RF environment.
 * The ESPHome port for the BS444 sibling,
   [bwynants/weegschaal](https://github.com/bwynants/weegschaal), for
   the same scale on an ESP32 instead of a Pi.

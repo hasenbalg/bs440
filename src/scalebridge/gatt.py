@@ -15,8 +15,9 @@ def uuid16(u: int) -> str:
     return BASE.format(u)
 
 
-# Medisana/Chipsea private service
-SCALE_SERVICE = uuid16(0x8080)          # seen in advertisements
+# Medisana private scale service (confirmed via openScale's
+# MedisanaBs44xHandler; units advertise it in their advertisements)
+SCALE_SERVICE = uuid16(0x78B2)
 
 # Data + command characteristics (all 16-bit, private range)
 CHAR_COMMAND = uuid16(0x8A81)           # write: 0x02 + unix time (LE u32) -> RTC sync + history dump

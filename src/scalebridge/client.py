@@ -26,16 +26,34 @@ from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
 
 from . import gatt
-from .decode import decode_body, decode_person, decode_weight
+from .decode import EPOCH_2010_OFFSET, decode_body, decode_person, decode_weight
 from .models import Dump, Person, Reading
 
 log = logging.getLogger("scalebridge.client")
 
-# Advertisement names of scales speaking this protocol.
+# Advertisement names of scales speaking this protocol.  Many Medisana
+# units advertise a hex token, not the model name; these prefixes come
+# from openScale's MedisanaBs44xHandler name mapping (and Frank's live
+# BS440 advertises "0203B6ABC8A438C1A4").
 NAME_PATTERNS = ["bs440", "bs441", "bs442", "bs410", "bs430", "bs444",
-                 "ss02", "medisana*"]
+                 "ss02", "medisana*",
+                 "013197*", "013198*", "0202b6*", "0203b*"]
 
 INDICATION_CAPABLE = {"indicate", "notify"}
+
+# Advertise-name prefixes -> firmware epoch family (openScale mapping).
+_EPOCH_NAME_PREFIXES = [("0203b", "unix"),
+                        ("013197", "2010"), ("013198", "2010"),
+                        ("0202b6", "2010")]
+
+
+def predict_epoch(name: Optional[str]) -> Optional[str]:
+    """Guess the firmware timestamp epoch from the advertisement name."""
+    lname = (name or "").lower().strip()
+    for prefix, mode in _EPOCH_NAME_PREFIXES:
+        if lname.startswith(prefix):
+            return mode
+    return None
 
 
 def matches_name(name: Optional[str]) -> bool:
@@ -142,8 +160,16 @@ class Scale:
     # -- actions ---------------------------------------------------------
 
     async def sync_clock(self) -> None:
-        """RTC sync = history dump trigger."""
-        payload = b"\x02" + int(time.time()).to_bytes(4, "little")
+        """RTC sync = history dump trigger.
+
+        2010-epoch firmware expects seconds since 2010-01-01 here
+        (openScale subtracts the offset before writing); everything
+        else gets real Unix time.
+        """
+        now = int(time.time())
+        if self.epoch == "2010":
+            now -= EPOCH_2010_OFFSET
+        payload = b"\x02" + now.to_bytes(4, "little")
         char = self._char(gatt.CHAR_COMMAND)
         write_with_response = "write" in (char.properties or {})
         try:
@@ -255,7 +281,7 @@ def match_reason(device, adv):
         return "name"
     for u in getattr(adv, "service_uuids", None) or []:
         if u.lower() == gatt.SCALE_SERVICE:
-            return "8080"
+            return "78b2"
     return None
 
 
@@ -268,6 +294,19 @@ def _short_uuids(adv) -> str:
         else:
             out.append(u[:8])
     return ",".join(out)
+
+
+def _mfg_ids(adv) -> str:
+    keys = getattr(adv, "manufacturer_data", None) or {}
+    return ",".join(f"{k:04x}" for k in keys)
+
+
+def _scan_line(dev, adv, via) -> str:
+    name = dev.name or getattr(adv, "local_name", None) or "(unnamed)"
+    mfg = _mfg_ids(adv)
+    extra = f"  mfg=[{mfg}]" if mfg else ""
+    return (f"{dev.address}  {name:<20} rssi={getattr(adv, 'rssi', None)}"
+            f"  via={via}  svcs=[{_short_uuids(adv)}]{extra}")
 
 
 async def watch_scales(address: Optional[str] = None, epoch: str = "auto",
