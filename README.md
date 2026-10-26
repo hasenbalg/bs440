@@ -27,6 +27,34 @@ Only runtime dependency: [`bleak`](https://github.com/hbldh/bleak).
 **Unpair the scale from the Medisana app / phone first.** Like most
 scales it serves one central at a time.
 
+## Library
+
+The CLI is a thin wrapper over a plain asyncio library — everything it
+does, you can do from your own code (see [`examples/`](examples/)):
+
+```python
+import asyncio
+from scalebridge import Scale, find_scales, watch_scales
+
+async def main():
+    (dev, adv), *_ = await find_scales(timeout=15)   # step on the scale
+
+    async with Scale(dev.address) as scale:          # one session
+        dump = await scale.dump()                    # profiles + history
+        for r in dump.readings:
+            print(r.datetime, r.weight_kg, r.fat_pct, r.bmi)
+
+    async for r in watch_scales(address=dev.address):  # forever
+        print(r.slot_name, r.weight_kg)               # new weigh-ins only
+
+asyncio.run(main())
+```
+
+Pure functions, usable without any Bluetooth: `decode_person`,
+`decode_weight`, `decode_body`, `sanitize_timestamp` from
+`scalebridge.decode` take the raw indication bytes straight from any
+BLE stack.
+
 ## How the protocol works
 
 The scale's private GATT service advertises as **`0x78B2`** and carries
