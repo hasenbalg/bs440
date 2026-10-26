@@ -86,3 +86,19 @@ def test_predict_epoch():
     assert predict_epoch("0202B61234567890") == "2010"
     assert predict_epoch("013197XYZ") == "2010"
     assert predict_epoch("BS440") is None
+
+
+def test_reading_str_has_one_decimal():
+    r = make_scale().result().readings[-1]
+    line = str(r)
+    assert "fat 18.4 " in line and "0.000000" not in line
+
+
+def test_empty_person_slots_are_dropped():
+    s = Scale("x")
+    junk = bytearray(u(PERSON_HEX))
+    junk[2] = 0xFF                      # unoccupied memory slot
+    assert s._ingest(gatt.CHAR_PERSON, junk) is True
+    assert s.persons == {}
+    assert s._ingest(gatt.CHAR_PERSON, u(PERSON_HEX)) is True
+    assert set(s.persons) == {2}

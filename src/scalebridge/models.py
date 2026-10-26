@@ -74,7 +74,7 @@ class Reading:
         return d
 
     def _fmt(self, v, unit="", nd=1):
-        return "  --  " if v is None else f"{v:{nd}f}{unit}"
+        return "  --  " if v is None else f"{v:.{nd}f}{unit}"
 
     def __str__(self) -> str:
         w = "  --  " if self.weight_kg is None else f"{self.weight_kg:.2f}kg"

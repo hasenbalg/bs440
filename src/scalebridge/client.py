@@ -130,7 +130,12 @@ class Scale:
         try:
             if uuid == gatt.CHAR_PERSON:
                 p = decode_person(data)
-                self.persons[p["person"]] = Person(**p)
+                if not 1 <= p["person"] <= 8:
+                    # Empty memory slot: firmware e.g. reports person 255
+                    # with an all-zero profile.  Recognised, not stored.
+                    log.debug("ignoring empty person slot: %s", p)
+                else:
+                    self.persons[p["person"]] = Person(**p)
             elif uuid == gatt.CHAR_WEIGHT:
                 w = decode_weight(data, self.epoch)
                 r = self.readings.setdefault(
