@@ -33,15 +33,18 @@ def _emit(readings: list[Reading], args) -> None:
 
 
 async def cmd_scan(args):
-    devices = await find_scales(timeout=args.timeout)
+    devices = await find_scales(timeout=args.timeout, all_devices=args.all)
     for dev, adv in devices:
         name = dev.name or getattr(adv, "local_name", None) or "(unnamed)"
-        via = match_reason(dev, adv) if adv else "address"
+        via = match_reason(dev, adv) if adv else "-"
+        if args.all and not via:
+            via = "-"
         svcs = _short_uuids(adv) if adv else ""
         print(f"{dev.address}  {name:<20} rssi={getattr(adv, 'rssi', None)}"
               f"  via={via}  svcs=[{svcs}]")
     if not devices:
-        print("no scales found (step on the scale so it wakes up)")
+        print("no scales found (step on the scale so it wakes up; "
+              "try --all to see every advertisement)")
 
 
 async def cmd_dump(args):
@@ -105,6 +108,8 @@ def main() -> None:
 
     p = sub.add_parser("scan", help="find scales (step on the scale first)")
     p.add_argument("--timeout", type=float, default=10.0)
+    p.add_argument("--all", action="store_true",
+                   help="show every advertisement, not just scale matches")
     p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("dump", help="pull the scale's stored history")

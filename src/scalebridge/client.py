@@ -217,22 +217,30 @@ class Scale:
 # -- scanning -------------------------------------------------------------
 
 async def find_scales(timeout: float = 10.0,
-                      address: Optional[str] = None) -> list[tuple]:
+                      address: Optional[str] = None,
+                      all_devices: bool = False) -> list[tuple]:
     """Scan for BS440-family advertisements (or a specific address).
 
     Always returns a list of ``(BLEDevice, AdvertisementData | None)``
     tuples -- bleak's ``discover(return_adv=True)`` yields exactly that
     per device, so we normalize to it instead of leaking that shape.
+    ``all_devices`` skips the filter (diagnostics: identify a scale that
+    advertises under an unexpected name/service).
     """
     if address:
         device = await BleakScanner.find_device_by_address(
             address, timeout=timeout)
         return [(device, None)] if device else []
 
-    devices = await BleakScanner.discover(
-        timeout=timeout, cb=lambda d, a: bool(match_reason(d, a)),
-        return_adv=True)
-    return list(devices.values())
+    devices = await BleakScanner.discover(timeout=timeout,
+                                          return_adv=True)
+    found = [(d, a) for d, a in devices.values()]
+    if all_devices:
+        return found
+    # Filter ourselves: the `cb` filter argument's semantics vary across
+    # bleak versions (on some backends its return value is ignored and
+    # *all* devices are returned), so never trust it to exclude.
+    return [(d, a) for d, a in found if match_reason(d, a)]
 
 
 def match_reason(device, adv):
