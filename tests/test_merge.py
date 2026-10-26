@@ -102,3 +102,12 @@ def test_empty_person_slots_are_dropped():
     assert s.persons == {}
     assert s._ingest(gatt.CHAR_PERSON, u(PERSON_HEX)) is True
     assert set(s.persons) == {2}
+
+
+def test_guest_slot_labeling():
+    from scalebridge.models import Reading
+    g = Reading(person=255, timestamp=1793047292, weight_kg=148.4)
+    assert g.slot_name == "guest"
+    assert g.to_dict()["slot"] == "guest"
+    assert "guest" in str(g)
+    assert Reading(person=6, timestamp=1).slot_name == "6"

@@ -60,6 +60,11 @@ Timestamps: some firmware counts from 2010-01-01 instead of Unix epoch.
 `013197`/`013198`/`0202B6` indicate 2010-based firmware; `0203B` is
 plain Unix.
 
+Person slot **255 = guest**: weigh-ins the scale couldn't attribute to
+a memory slot (and empty slots in the profile dump) come back as
+person `0xFF` with no body-comp values and no profile — real firmware
+behavior, shown as `guest` by this client.
+
 Byte layout as reverse-engineered by **keptenkurk** (see credits); the
 unit tests pin the decoders to real captured packets from that writeup
 (`tests/test_decode.py`).

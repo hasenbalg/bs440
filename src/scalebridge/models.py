@@ -7,6 +7,10 @@ from typing import Optional
 
 UTC = dt.timezone.utc
 
+# Firmware reports unoccupied memory slots and unidentified weigh-ins
+# (guest users) as person 255.
+GUEST_SLOT = 0xFF
+
 
 def _iso(ts: int) -> str:
     if not ts:
@@ -52,6 +56,10 @@ class Reading:
         return (self.person, self.timestamp)
 
     @property
+    def slot_name(self) -> str:
+        return "guest" if self.person == GUEST_SLOT else str(self.person)
+
+    @property
     def datetime(self) -> Optional[dt.datetime]:
         return dt.datetime.fromtimestamp(self.timestamp, tz=UTC) \
             if self.timestamp else None
@@ -64,7 +72,8 @@ class Reading:
         return None
 
     def to_dict(self) -> dict:
-        d = {"person": self.person, "timestamp": self.timestamp,
+        d = {"person": self.person, "slot": self.slot_name,
+             "timestamp": self.timestamp,
              "datetime": _iso(self.timestamp), "weight_kg": self.weight_kg,
              "kcal": self.kcal, "fat_pct": self.fat_pct,
              "tbw_pct": self.tbw_pct, "muscle_pct": self.muscle_pct,
@@ -78,7 +87,7 @@ class Reading:
 
     def __str__(self) -> str:
         w = "  --  " if self.weight_kg is None else f"{self.weight_kg:.2f}kg"
-        return (f"{_iso(self.timestamp)}  p{self.person}  {w:>9}  "
+        return (f"{_iso(self.timestamp)}  {self.slot_name:>5}  {w:>9}  "
                 f"fat {self._fmt(self.fat_pct)}  "
                 f"water {self._fmt(self.tbw_pct)}  "
                 f"muscle {self._fmt(self.muscle_pct)}  "
