@@ -34,9 +34,7 @@ def _emit(readings: list[Reading], args) -> None:
 
 async def cmd_scan(args):
     devices = await find_scales(timeout=args.timeout)
-    for d in devices:
-        dev = getattr(d, "device", d)
-        adv = getattr(d, "advertisement_data", None)
+    for dev, adv in devices:
         name = dev.name or getattr(adv, "local_name", None) or "(unnamed)"
         print(f"{dev.address}  {name:<20} rssi={getattr(adv, 'rssi', None)}")
     if not devices:

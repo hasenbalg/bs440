@@ -217,12 +217,17 @@ class Scale:
 # -- scanning -------------------------------------------------------------
 
 async def find_scales(timeout: float = 10.0,
-                      address: Optional[str] = None) -> list:
-    """Scan for BS440-family advertisements (or a specific address)."""
+                      address: Optional[str] = None) -> list[tuple]:
+    """Scan for BS440-family advertisements (or a specific address).
+
+    Always returns a list of ``(BLEDevice, AdvertisementData | None)``
+    tuples -- bleak's ``discover(return_adv=True)`` yields exactly that
+    per device, so we normalize to it instead of leaking that shape.
+    """
     if address:
         device = await BleakScanner.find_device_by_address(
             address, timeout=timeout)
-        return [device] if device else []
+        return [(device, None)] if device else []
 
     def match(device, adv) -> bool:
         uuids = [u.lower() for u in (adv.service_uuids or [])]
@@ -253,10 +258,8 @@ async def watch_scales(address: Optional[str] = None, epoch: str = "auto",
         if not found:
             await asyncio.sleep(reconnect_delay)
             continue
-        dev = found[0]
-        dev_address = getattr(dev, "address", None) or \
-            getattr(getattr(dev, "device", None), "address", address)
-        scale = Scale(dev_address, epoch=epoch)
+        dev, _adv = found[0]
+        scale = Scale(dev.address, epoch=epoch)
         try:
             await scale.connect()
             dump = await scale.dump(idle_timeout=idle_timeout)
