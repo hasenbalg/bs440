@@ -1,0 +1,63 @@
+"""Headless tests for the client's ingest/merge logic (no BLE needed)."""
+from scalebridge import gatt
+from scalebridge.client import Scale, matches_name
+
+WEIGHT_HEX = "1d8c1e00fe6e0aa056451100ff020900000000"
+WEIGHT_HEX2 = "1d961e00fe72fe9f56291100ff020900000000"  # p2, later ts
+BODY_HEX = "6f6e0aa05602440ab8f07ff26bf11ef0000000"
+PERSON_HEX = "845302800134b6e0000000000000000000000000"
+
+u = bytes.fromhex
+
+
+def make_scale():
+    s = Scale("AA:BB:CC:DD:EE:FF", epoch="unix")
+    s._ingest(gatt.CHAR_PERSON, u(PERSON_HEX))
+    s._ingest(gatt.CHAR_WEIGHT, u(WEIGHT_HEX))
+    s._ingest(gatt.CHAR_BODY, u(BODY_HEX))
+    s._ingest(gatt.CHAR_WEIGHT, u(WEIGHT_HEX2))
+    return s
+
+
+def test_weight_and_body_merge_into_one_reading():
+    dump = make_scale().result()
+    assert len(dump.readings) == 2
+    old, new = dump.readings  # sorted ascending by timestamp
+    assert old.weight_kg == 78.3 and old.kcal is None  # weight-only record
+    assert new.weight_kg == 78.2 and new.kcal == 2628  # merged pair
+    assert new.fat_pct == 18.4
+
+
+def test_duplicate_records_collapse():
+    s = make_scale()
+    s._ingest(gatt.CHAR_WEIGHT, u(WEIGHT_HEX))  # same indication twice
+    assert len(s.result().readings) == 2
+
+
+def test_profiles_attached_for_bmi():
+    dump = make_scale().result()
+    r = dump.readings[-1]
+    assert r.profile is not None and r.profile.size_cm == 182
+    assert r.bmi == round(78.2 / 1.82 ** 2, 1)
+
+
+def test_garbage_is_rejected_not_merged():
+    s = Scale("x")
+    assert s._ingest(gatt.CHAR_WEIGHT, u("ff0000")) is False
+    assert s.readings == {}
+    assert len(s.unhandled) == 1
+
+
+def test_unknown_uuid_lands_in_unhandled():
+    s = Scale("x")
+    assert s._ingest("0000ffff-0000-1000-8000-00805f9b34fb", u("0102")) \
+        is False
+    assert len(s.unhandled) == 1
+
+
+def test_name_matching():
+    assert matches_name("BS440")
+    assert matches_name("BS 440")
+    assert matches_name("Medisana scale")
+    assert not matches_name("QN-Scale1")
+    assert not matches_name(None)

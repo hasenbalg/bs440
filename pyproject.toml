@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scalebridge"
+version = "0.1.0"
+description = "Read Medisana BS440 body-composition scales over Bluetooth LE — no vendor cloud, no Medisana app (BS440/BS441/BS442; same wire protocol family as BS410/BS444)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "bleak>=0.22",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff>=0.6"]
+
+[project.scripts]
+scalebridge = "scalebridge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 90
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "I"]
