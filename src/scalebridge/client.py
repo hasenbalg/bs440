@@ -229,14 +229,37 @@ async def find_scales(timeout: float = 10.0,
             address, timeout=timeout)
         return [(device, None)] if device else []
 
-    def match(device, adv) -> bool:
-        uuids = [u.lower() for u in (adv.service_uuids or [])]
-        return matches_name(device.name or adv.local_name) \
-            or gatt.SCALE_SERVICE in uuids
-
     devices = await BleakScanner.discover(
-        timeout=timeout, cb=match, return_adv=True)
+        timeout=timeout, cb=lambda d, a: bool(match_reason(d, a)),
+        return_adv=True)
     return list(devices.values())
+
+
+def match_reason(device, adv):
+    """Why an advertisement looks like our scale family, or None.
+
+    Returns "name" or the matched service UUID; surfaced in `scan`
+    output because the 8080 service hint matches plenty of non-scale
+    Chinese BLE modules too.
+    """
+    if matches_name(getattr(device, "name", None)
+                    or getattr(adv, "local_name", None)):
+        return "name"
+    for u in getattr(adv, "service_uuids", None) or []:
+        if u.lower() == gatt.SCALE_SERVICE:
+            return "8080"
+    return None
+
+
+def _short_uuids(adv) -> str:
+    out = []
+    for u in getattr(adv, "service_uuids", None) or []:
+        u = u.lower()
+        if u.endswith("-0000-1000-8000-00805f9b34fb"):
+            out.append(u[4:8])
+        else:
+            out.append(u[:8])
+    return ",".join(out)
 
 
 async def watch_scales(address: Optional[str] = None, epoch: str = "auto",

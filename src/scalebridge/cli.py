@@ -10,7 +10,7 @@ import sys
 
 from bleak.exc import BleakError
 
-from .client import Scale, find_scales, watch_scales
+from .client import Scale, _short_uuids, find_scales, match_reason, watch_scales
 from .decode import EPOCH_MODES
 from .models import Reading
 
@@ -36,7 +36,10 @@ async def cmd_scan(args):
     devices = await find_scales(timeout=args.timeout)
     for dev, adv in devices:
         name = dev.name or getattr(adv, "local_name", None) or "(unnamed)"
-        print(f"{dev.address}  {name:<20} rssi={getattr(adv, 'rssi', None)}")
+        via = match_reason(dev, adv) if adv else "address"
+        svcs = _short_uuids(adv) if adv else ""
+        print(f"{dev.address}  {name:<20} rssi={getattr(adv, 'rssi', None)}"
+              f"  via={via}  svcs=[{svcs}]")
     if not devices:
         print("no scales found (step on the scale so it wakes up)")
 

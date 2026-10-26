@@ -1,6 +1,8 @@
 """Headless tests for the client's ingest/merge logic (no BLE needed)."""
+import types
+
 from scalebridge import gatt
-from scalebridge.client import Scale, matches_name
+from scalebridge.client import Scale, match_reason, matches_name
 
 WEIGHT_HEX = "1d8c1e00fe6e0aa056451100ff020900000000"
 WEIGHT_HEX2 = "1d961e00fe72fe9f56291100ff020900000000"  # p2, later ts
@@ -61,3 +63,16 @@ def test_name_matching():
     assert matches_name("Medisana scale")
     assert not matches_name("QN-Scale1")
     assert not matches_name(None)
+
+
+def test_match_reason():
+    d = types.SimpleNamespace(name=None)
+    a = types.SimpleNamespace(local_name="BS440", service_uuids=[])
+    assert match_reason(d, a) == "name"
+    a = types.SimpleNamespace(
+        local_name="unpaired",
+        service_uuids=["00008080-0000-1000-8000-00805f9b34fb"])
+    assert match_reason(d, a) == "8080"
+    a = types.SimpleNamespace(local_name="YamahaAV",
+                              service_uuids=["0000110c-0000-1000-8000-00805f9b34fb"])
+    assert match_reason(d, a) is None
